@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import matter from 'gray-matter';
 import { ClaudeMemClient } from '../clients/claude-mem.js';
 import { WikiStore } from '../wiki/store.js';
-import { LLMProvider } from '../llm/provider.js';
+import { LLMProvider, resolveApiKey } from '../llm/provider.js';
 import { commitWiki } from '../git/commit.js';
 import { mergeThreeWay, contentHash } from '../wiki/diff.js';
 
@@ -147,15 +147,23 @@ export async function ingest(opts: {
   }
 
   // Call LLM
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = resolveApiKey({ apiKeyEnv: config.apiKeyEnv });
   if (!apiKey) {
-    console.error('Error: OPENROUTER_API_KEY environment variable not set.');
-    console.error('Set it with: export OPENROUTER_API_KEY=***\n');
+    console.error('Error: No API key found.');
+    console.error('Set one of: LLM_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, or MEMWIKI_API_KEY');
+    console.error('Or configure apiKeyEnv in .memwiki/config.json to specify a custom env var.');
     process.exit(1);
   }
 
-  const llm = new LLMProvider({ apiKey, model: config.model, baseUrl: config.baseUrl });
+  const providerName = config.provider || 'openrouter';
+  const llm = new LLMProvider({
+    apiKey,
+    model: config.model,
+    baseUrl: config.baseUrl,
+    provider: providerName,
+  });
 
+  if (opts.verbose) console.log(`Using LLM provider: ${providerName} / ${config.model} (${config.baseUrl})`);
   if (opts.verbose) console.log('Calling LLM to canonize observations...');
 
   const result = await llm.chatJSON<{

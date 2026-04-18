@@ -28,15 +28,15 @@ Think of it as a **second brain** for your AI-assisted coding workflow -- one th
                          memwiki data flow
 
   +----------------+         +----------+         +------------------+
-  |  Claude Code   |         | memwiki  |         |  OpenRouter LLM  |
-  |  + claude-mem  | ----->  |  ingest  | ----->  | (elephant-alpha) |
-  |  (localhost     |  HTTP   |          |  HTTP   |                  |
-  |   :37777)       |         |          |         |  Canonizes raw   |
-  |                |         |          | <-----  |  obs into wiki   |
-  |  Captures obs, |         |          |  JSON   |  pages           |
-  |  sessions,     |         +----------+         +------------------+
-  |  search        |              |
-  +----------------+              |
+  |  Claude Code   |         | memwiki  |         |  LLM Provider    |
+  |  + claude-mem  | ----->  |  ingest  | ----->  | (OpenRouter,     |
+  |  (localhost     |  HTTP   |          |  HTTP   |  OpenAI, Ollama, |
+  |   :37777)       |         |          |         |  LM Studio...)   |
+  |                |         |          | <-----  |                  |
+  |  Captures obs, |         |          |  JSON   |  Canonizes raw   |
+  |  sessions,     |         +----------+         |  obs into wiki   |
+  |  search        |              |               |  pages           |
+  +----------------+              |               +------------------+
                         +---------v----------+
                         |   wiki/             |
                         |   +-- entities/     |
@@ -81,7 +81,7 @@ src/
   git/
     commit.ts                -- Auto-commit wiki changes
   llm/
-    provider.ts              -- OpenRouter-compatible LLM provider
+    provider.ts              -- OpenAI-compatible LLM provider (multi-provider)
     prompts/
       ingest.md              -- System prompt for wiki canonization
   wiki/
@@ -140,7 +140,11 @@ Persistent wiki memory for AI coding sessions...
 
 - **Node.js** >= 18
 - **claude-mem** installed and running (provides the HTTP API on `localhost:37777`)
-- **OpenRouter API key** (for LLM canonization)
+- **An LLM provider** with an OpenAI-compatible chat completions API. Supported out of the box:
+  - **OpenRouter** (default, free tier available with `openrouter/elephant-alpha`)
+  - **OpenAI** (gpt-4o-mini, gpt-4o, etc.)
+  - **Ollama** (llama3, mistral, etc. -- local, no API key needed)
+  - **LM Studio** (any local model -- no API key needed)
 
 ### Install from source
 
@@ -163,7 +167,7 @@ memwiki install
 # ... use Claude Code normally ...
 
 # 3. Promote observations to wiki pages
-export OPENROUTER_API_KEY=sk-or-...
+export OPENROUTER_API_KEY=***     # or LLM_API_KEY, OPENAI_API_KEY, MEMWIKI_API_KEY
 memwiki ingest --verbose
 
 # 4. View wiki context for your next session
@@ -172,6 +176,27 @@ memwiki context
 # 5. Check wiki health
 memwiki lint
 ```
+
+## Token Economics
+
+Does memwiki actually save tokens? **Yes — typically 80-97% per session.**
+
+| Scenario | Without memwiki | With memwiki | Savings |
+|----------|----------------|--------------|---------|
+| Small project (5 files) | ~32,000 tokens/session | ~2,000 tokens/session | ~94% |
+| Medium project (20 files) | ~180,000 tokens/session | ~2,000 tokens/session | ~99% |
+| Large project (100 files) | ~2,400,000 tokens/session | ~2,000 tokens/session | ~99.9% |
+
+The wiki context is capped at 2,000 tokens. Ingest cost is a one-time ~6,500 tokens per run. **Break-even: session 2.**
+
+Real measurement from this project: claude-mem reported **96% savings** — 2,461 tokens to read vs 66,907 tokens of work investment.
+
+```bash
+# Run the token economics test suite
+npm run build && node --test dist/tests/token-economics.test.js
+```
+
+See [docs/TOKEN_ECONOMICS.md](docs/TOKEN_ECONOMICS.md) for the full analysis, formulas, and how to measure your own savings.
 
 ## Commands
 
@@ -267,10 +292,63 @@ Configuration is stored in `.memwiki/config.json`:
 
 ```json
 {
+  "provider": "openrouter",
   "model": "openrouter/elephant-alpha",
   "baseUrl": "https://openrouter.ai/api/v1",
+  "apiKeyEnv": "OPENROUTER_API_KEY",
   "claudeMemUrl": "http://127.0.0.1:37777",
   "maxTokens": 4096
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `provider` | LLM provider: `openrouter`, `openai`, `ollama`, or `custom` |
+| `model` | Model identifier to use (e.g. `openrouter/elephant-alpha`, `gpt-4o-mini`, `llama3`) |
+| `baseUrl` | Base URL for the OpenAI-compatible chat completions endpoint |
+| `apiKeyEnv` | Name of the environment variable holding the API key |
+| `claudeMemUrl` | URL of the claude-mem HTTP API |
+| `maxTokens` | Maximum tokens for LLM responses |
+
+### Provider examples
+
+**OpenRouter** (default -- free with elephant-alpha):
+```json
+{
+  "provider": "openrouter",
+  "model": "openrouter/elephant-alpha",
+  "baseUrl": "https://openrouter.ai/api/v1",
+  "apiKeyEnv": "OPENROUTER_API_KEY"
+}
+```
+
+**OpenAI** (direct):
+```json
+{
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "baseUrl": "https://api.openai.com/v1",
+  "apiKeyEnv": "OPENAI_API_KEY"
+}
+```
+
+**Ollama** (local, no API key):
+```json
+{
+  "provider": "ollama",
+  "model": "llama3",
+  "baseUrl": "http://localhost:11434/v1",
+  "apiKeyEnv": ""
+}
+```
+
+**LM Studio** (local, no API key):
+```json
+{
+  "provider": "custom",
+  "model": "my-model",
+  "baseUrl": "http://localhost:1234/v1",
+  "apiKeyEnv": ""
 }
 ```
 
@@ -289,7 +367,16 @@ State is tracked in `.memwiki/state.json`:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENROUTER_API_KEY` | Yes | API key for OpenRouter LLM calls |
+| `OPENROUTER_API_KEY` | If using OpenRouter | API key for OpenRouter |
+| `OPENAI_API_KEY` | If using OpenAI | API key for OpenAI |
+| `LLM_API_KEY` | Alternative | Generic API key, works with any provider |
+| `MEMWIKI_API_KEY` | Alternative | Another generic API key option |
+| `LLM_BASE_URL` | No | Override `baseUrl` from config.json |
+| `LLM_MODEL` | No | Override `model` from config.json |
+
+**API key resolution order**: `apiKeyEnv` (from config) → `MEMWIKI_API_KEY` → `LLM_API_KEY` → `OPENROUTER_API_KEY` → `OPENAI_API_KEY`. The first one found is used.
+
+For local providers (Ollama, LM Studio), no API key is required.
 
 ## 3-way merge
 
@@ -315,7 +402,7 @@ memwiki builds on these excellent projects:
 | Dependency | Author | Description |
 |------------|--------|-------------|
 | [claude-mem](https://github.com/thedotmack/claude-mem) | [thedotmack](https://github.com/thedotmack) | Memory layer for Claude Code CLI. Provides HTTP API on localhost:37777 with observations, sessions, and search endpoints. memwiki consumes this API to fetch raw coding session data. |
-| [OpenRouter](https://openrouter.ai) | OpenRouter | LLM proxy service. memwiki uses it to call elephant-alpha (free model) for canonizing observations into structured wiki pages. |
+| [OpenRouter](https://openrouter.ai) | OpenRouter | LLM proxy service. One of the supported providers -- memwiki uses it by default with elephant-alpha (free model) for canonizing observations into structured wiki pages. Any OpenAI-compatible provider can be used instead. |
 | [gray-matter](https://github.com/jonschlinkert/gray-matter) | [jonschlinkert](https://github.com/jonschlinkert) | Parses and stringifies YAML frontmatter in markdown files. Core to the wiki page format. |
 | [commander.js](https://github.com/tj/commander.js) | [tj](https://github.com/tj) | CLI framework. Powers the memwiki command-line interface. |
 | [zod](https://github.com/colinhacks/zod) | [colinhacks](https://github.com/colinhacks) | Schema validation for frontmatter structures. |

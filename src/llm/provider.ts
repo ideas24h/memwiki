@@ -1,8 +1,11 @@
+export type LLMProviderName = 'openrouter' | 'openai' | 'ollama' | 'custom';
+
 export interface LLMConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
   maxTokens: number;
+  provider: LLMProviderName;
 }
 
 export interface LLMMessage {
@@ -19,23 +22,49 @@ const DEFAULT_CONFIG: Partial<LLMConfig> = {
   baseUrl: 'https://openrouter.ai/api/v1',
   model: 'openrouter/elephant-alpha',
   maxTokens: 4096,
+  provider: 'openrouter',
 };
 
 export class LLMProvider {
   private config: LLMConfig;
 
   constructor(config: Partial<LLMConfig> & { apiKey: string }) {
-    this.config = { ...DEFAULT_CONFIG, ...config } as LLMConfig;
+    // Allow env vars to override baseUrl and model if not explicitly provided
+    const baseUrl = config.baseUrl || process.env.LLM_BASE_URL || DEFAULT_CONFIG.baseUrl!;
+    const model = config.model || process.env.LLM_MODEL || DEFAULT_CONFIG.model!;
+    const provider = config.provider || DEFAULT_CONFIG.provider!;
+
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      baseUrl,
+      model,
+      provider,
+    } as LLMConfig;
+  }
+
+  get providerName(): LLMProviderName {
+    return this.config.provider;
+  }
+
+  get modelName(): string {
+    return this.config.model;
   }
 
   async chat(messages: LLMMessage[]): Promise<LLMResponse> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.config.apiKey}`,
+    };
+
+    // HTTP-Referer header is required by OpenRouter but should not be sent to other providers
+    if (this.config.provider === 'openrouter') {
+      headers['HTTP-Referer'] = 'memwiki';
+    }
+
     const res = await fetch(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.apiKey}`,
-        'HTTP-Referer': 'memwiki',
-      },
+      headers,
       body: JSON.stringify({
         model: this.config.model,
         messages,
@@ -45,7 +74,7 @@ export class LLMProvider {
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`LLM API error ${res.status}: ${err}`);
+      throw new Error(`LLM API error (${this.config.provider}/${this.config.model}) ${res.status}: ${err}`);
     }
 
     const data = await res.json() as any;
@@ -74,4 +103,27 @@ export class LLMProvider {
     }
     return JSON.parse(text) as T;
   }
+}
+
+/**
+ * Resolve API key from config or environment variables.
+ * Priority: config.apiKeyEnv -> MEMWIKI_API_KEY -> LLM_API_KEY -> OPENROUTER_API_KEY -> OPENAI_API_KEY
+ */
+export function resolveApiKey(config: { apiKeyEnv?: string } = {}): string {
+  // If a specific env var is configured, use it first
+  if (config.apiKeyEnv) {
+    const key = process.env[config.apiKeyEnv];
+    if (key) return key;
+  }
+
+  // Fallback chain
+  const fallbacks = ['MEMWIKI_API_KEY', 'LLM_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY'];
+  for (const envVar of fallbacks) {
+    const key = process.env[envVar];
+    if (key) {
+      return key;
+    }
+  }
+
+  return '';
 }
