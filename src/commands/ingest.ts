@@ -129,11 +129,28 @@ export async function ingest(opts: {
     created_at: o.created_at,
   }));
 
+  // Dry-run: show what would be processed without calling LLM
+  if (opts.dryRun) {
+    console.log('=== DRY RUN ===');
+    console.log(`Found ${observations.length} new observations since ${new Date(sinceEpoch).toISOString()}`);
+    const byType: Record<string, number> = {};
+    for (const o of observations) {
+      byType[o.type] = (byType[o.type] || 0) + 1;
+    }
+    console.log('Observation types:');
+    for (const [type, count] of Object.entries(byType)) {
+      console.log(`  ${type}: ${count}`);
+    }
+    console.log(`\nExisting wiki pages: ${existingSlugs.length}`);
+    console.log('No LLM call made — no changes written.');
+    return;
+  }
+
   // Call LLM
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     console.error('Error: OPENROUTER_API_KEY environment variable not set.');
-    console.error('Set it with: export OPENROUTER_API_KEY=your-key');
+    console.error('Set it with: export OPENROUTER_API_KEY=***\n');
     process.exit(1);
   }
 
@@ -157,16 +174,6 @@ export async function ingest(opts: {
       content: `## Current Wiki State\n\`\`\`json\n${JSON.stringify(wikiContext, null, 2)}\n\`\`\`\n\n## New Observations\n\`\`\`json\n${JSON.stringify(obsData, null, 2)}\n\`\`\`\n\nProcess these observations and return wiki updates as JSON.`,
     },
   ]);
-
-  if (opts.dryRun) {
-    console.log('=== DRY RUN ===');
-    console.log(`Would create/update ${result.pages.length} pages`);
-    for (const page of result.pages) {
-      console.log(`  ${page.action}: ${page.path}`);
-    }
-    console.log(`\nSummary: ${result.summary}`);
-    return;
-  }
 
   // Write pages (with 3-way merge for existing pages)
   for (const page of result.pages) {

@@ -5,6 +5,8 @@ import { ingest } from './commands/ingest.js';
 import { showContext } from './commands/context.js';
 import { lint } from './commands/lint.js';
 import { daemon } from './commands/daemon.js';
+import { query } from './commands/query.js';
+import { startMcpServer } from './mcp/server.js';
 
 const program = new Command()
   .name('memwiki')
@@ -49,8 +51,9 @@ program.command('query')
   .argument('<query>', 'Search query')
   .option('--type <type>', 'Filter by page type')
   .option('--limit <n>', 'Max results', '10')
-  .action(async (query, opts) => {
-    console.log(`Query "${query}" not implemented yet (Phase 4)`);
+  .option('--json', 'Output as JSON')
+  .action(async (queryStr, opts) => {
+    await query(queryStr, opts);
   });
 
 program.command('daemon')
@@ -63,7 +66,7 @@ program.command('daemon')
 program.command('mcp')
   .description('Run as MCP stdio server')
   .action(async () => {
-    console.log('MCP server not implemented yet (Phase 4)');
+    await startMcpServer();
   });
 
 program.parse();

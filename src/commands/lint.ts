@@ -194,10 +194,14 @@ export async function lint(opts: { fix?: boolean; json?: boolean }): Promise<voi
   const fixes: Array<{ page: string; description: string }> = [];
 
   // 3. Validate each page
+  // Track original paths for pages that get renamed
+  const renamedFrom = new Map<string, string>(); // newPath -> originalPath
+
   for (const page of pages) {
     const fm = page.frontmatter;
     const pagePath = page.path;
     const pageType = typeFromPath(pagePath);
+    const originalPath = pagePath;
 
     // 3a. Slug validity
     const fileSlug = slugFromPath(pagePath);
@@ -220,7 +224,8 @@ export async function lint(opts: { fix?: boolean; json?: boolean }): Promise<voi
           if (!knownSlugs.has(newPath)) {
             fm.slug = normalised;
             page.path = newPath;
-            fixes.push({ page: pagePath, description: `renamed slug "${fileSlug}" -> "${normalised}"` });
+            renamedFrom.set(newPath, originalPath);
+            fixes.push({ page: originalPath, description: `renamed slug "${fileSlug}" -> "${normalised}"` });
           }
         }
       }
@@ -341,10 +346,12 @@ export async function lint(opts: { fix?: boolean; json?: boolean }): Promise<voi
   if (opts.fix) {
     const validKinds = ['person', 'service', 'repo', 'api', 'tool', 'unknown'];
 
-    // Fix: remove broken links from page bodies
+    // Apply ALL fixes to in-memory page objects FIRST, then write once
     for (const err of result.errors) {
+      // Fix: remove broken links from page bodies
       if (err.rule === 'broken_link') {
-        const page = pages.find(p => p.path === err.page);
+        // Use renamedFrom to find the page even if it was renamed
+        const page = pages.find(p => p.path === err.page || renamedFrom.get(p.path) === err.page);
         if (!page) continue;
         const targetMatch = err.detail.match(/\[\[([^\]]+)\]\]/);
         if (!targetMatch) continue;
@@ -357,12 +364,13 @@ export async function lint(opts: { fix?: boolean; json?: boolean }): Promise<voi
 
       // Fix: normalize invalid entity kinds to 'unknown'
       if (err.rule === 'invalid_frontmatter') {
-        const page = pages.find(p => p.path === err.page);
+        const page = pages.find(p => p.path === err.page || renamedFrom.get(p.path) === err.page);
         if (!page) continue;
         const fm = page.frontmatter as any;
         if (fm.kind && !validKinds.includes(fm.kind)) {
+          const oldKind = fm.kind;
           fm.kind = 'unknown';
-          fixes.push({ page: err.page, description: `normalized kind '${fm.kind}' -> 'unknown'` });
+          fixes.push({ page: err.page, description: `normalized kind '${oldKind}' -> 'unknown'` });
         }
       }
     }
@@ -374,9 +382,16 @@ export async function lint(opts: { fix?: boolean; json?: boolean }): Promise<voi
       return true;
     });
 
-    // Write modified pages
+    // Write modified pages (all fixes already applied in-memory)
     for (const page of pages) {
       store.write(page);
+    }
+
+    // Delete original files for renamed pages to avoid duplicates
+    for (const [newPath, originalPath] of renamedFrom) {
+      if (originalPath !== newPath) {
+        store.delete(originalPath);
+      }
     }
   }
 
