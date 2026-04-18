@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { install } from './commands/install.js';
 import { ingest } from './commands/ingest.js';
 import { showContext } from './commands/context.js';
+import { lint } from './commands/lint.js';
 
 const program = new Command()
   .name('memwiki')
@@ -39,7 +40,7 @@ program.command('lint')
   .option('--fix', 'Auto-fix where possible')
   .option('--json', 'Output as JSON')
   .action(async (opts) => {
-    console.log('Lint not implemented yet (Phase 2)');
+    await lint(opts);
   });
 
 program.command('query')
