@@ -4,8 +4,37 @@ import matter from 'gray-matter';
 import { ClaudeMemClient } from '../clients/claude-mem.js';
 import { WikiStore } from '../wiki/store.js';
 import { LLMProvider, resolveApiKey } from '../llm/provider.js';
+import { readFileSync } from 'fs';
 import { commitWiki } from '../git/commit.js';
 import { mergeThreeWay, contentHash } from '../wiki/diff.js';
+
+/** Load KEY=VALUE pairs from .env files into process.env (if not already set) */
+function loadDotEnv(): void {
+  const candidates = [
+    // Project-local
+    '.env',
+    // User-level configs
+    '~/.config/last30days/.env',
+    '~/.hermes/.env',
+  ];
+  for (const p of candidates) {
+    const resolved = p.startsWith('~') ? p.replace('~', process.env.HOME || '/root') : p;
+    try {
+      const content = readFileSync(resolved, 'utf-8');
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eq = trimmed.indexOf('=');
+        if (eq < 0) continue;
+        const key = trimmed.slice(0, eq).trim();
+        const val = trimmed.slice(eq + 1).trim();
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    } catch { /* file doesn't exist, skip */ }
+  }
+}
 
 const INGEST_PROMPT = `You are a wiki editor. Given observations from coding sessions and the current wiki state, output wiki page updates as JSON.
 
@@ -147,6 +176,7 @@ export async function ingest(opts: {
   }
 
   // Call LLM
+  loadDotEnv();
   const apiKey = resolveApiKey({ apiKeyEnv: config.apiKeyEnv });
   if (!apiKey) {
     console.error('Error: No API key found.');

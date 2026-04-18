@@ -6,6 +6,9 @@ import { showContext } from './commands/context.js';
 import { lint } from './commands/lint.js';
 import { daemon } from './commands/daemon.js';
 import { query } from './commands/query.js';
+import { register } from './commands/register.js';
+import { ingestAll } from './commands/ingest-all.js';
+import { projects } from './commands/projects.js';
 import { startMcpServer } from './mcp/server.js';
 
 const program = new Command()
@@ -67,6 +70,28 @@ program.command('mcp')
   .description('Run as MCP stdio server')
   .action(async () => {
     await startMcpServer();
+  });
+
+// Multi-repo commands
+program.command('register')
+  .description('Register a project for multi-repo management')
+  .argument('[path]', 'Path to project (defaults to CWD)')
+  .action(async (projectPath?: string) => {
+    await register({ path: projectPath });
+  });
+
+program.command('ingest-all')
+  .description('Ingest all registered projects')
+  .option('--verbose', 'Show detailed output')
+  .action(async (opts) => {
+    await ingestAll(opts);
+  });
+
+program.command('projects')
+  .description('List registered projects with status')
+  .option('--json', 'Output as JSON')
+  .action(async (opts) => {
+    await projects(opts);
   });
 
 program.parse();
