@@ -231,12 +231,13 @@ export async function lint(opts: { fix?: boolean; json?: boolean }): Promise<voi
       }
     }
 
-    // 3b. Slug / path mismatch
-    if (fm.slug && fm.slug !== fileSlug) {
+    // 3b. Slug / path mismatch (use current path after possible rename in 3a)
+    const currentSlug = slugFromPath(page.path);
+    if (fm.slug && fm.slug !== currentSlug) {
       result.errors.push({
-        page: pagePath,
+        page: page.path,
         rule: 'invalid_slug',
-        detail: `frontmatter slug "${fm.slug}" doesn't match filename "${fileSlug}"`,
+        detail: `frontmatter slug "${fm.slug}" doesn't match filename "${currentSlug}"`,
       });
     }
 
@@ -379,6 +380,15 @@ export async function lint(opts: { fix?: boolean; json?: boolean }): Promise<voi
     result.errors = result.errors.filter(err => {
       if (err.rule === 'broken_link') return false; // was fixed
       if (err.rule === 'invalid_frontmatter' && fixes.some(f => f.page === err.page && f.description.includes('normalized kind'))) return false;
+      // Remove invalid_slug errors for pages that were successfully renamed
+      if (err.rule === 'invalid_slug' && renamedFrom.size > 0) {
+        // Check if this error's page was the original path of a rename
+        for (const [, originalPath] of renamedFrom) {
+          if (err.page === originalPath) return false;
+        }
+        // Also remove slug mismatch errors if slug now matches after rename
+        if (fixes.some(f => f.page === err.page && f.description.includes('renamed slug'))) return false;
+      }
       return true;
     });
 
