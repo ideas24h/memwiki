@@ -12,8 +12,15 @@ export interface Observation {
   created_at: string;
   created_at_epoch: number;
   title?: string;
+  subtitle?: string;
+  narrative?: string;
+  facts?: string;
+  concepts?: string;
   concept?: string;
   source_files?: string;
+  files_read?: string;
+  files_modified?: string;
+  prompt_number?: number;
 }
 
 export interface SessionSummary {
@@ -38,6 +45,11 @@ export class ClaudeMemClient {
     this.timeout = config?.timeout ?? 5000;
   }
 
+  /** Extract array from paginated responses: { items: [...] } or { observations: [...] } or bare array */
+  private extractArray(data: any): any[] {
+    return data.items ?? data.observations ?? data.summaries ?? data.results ?? (Array.isArray(data) ? data : []);
+  }
+
   async health(): Promise<{ ok: boolean; version?: string }> {
     try {
       const res = await fetch(`${this.baseUrl}/api/health`, { signal: AbortSignal.timeout(this.timeout) });
@@ -58,7 +70,7 @@ export class ClaudeMemClient {
       const res = await fetch(`${this.baseUrl}/api/observations?${qs}`);
       if (!res.ok) return [];
       const data = await res.json() as any;
-      return data.observations ?? data ?? [];
+      return this.extractArray(data);
     } catch { return []; }
   }
 
@@ -91,7 +103,7 @@ export class ClaudeMemClient {
       });
       if (!res.ok) return [];
       const data = await res.json() as any;
-      return data.observations ?? data ?? [];
+      return this.extractArray(data);
     } catch { return []; }
   }
 
@@ -104,7 +116,7 @@ export class ClaudeMemClient {
       const res = await fetch(`${this.baseUrl}/api/summaries?${qs}`);
       if (!res.ok) return [];
       const data = await res.json() as any;
-      return data.summaries ?? data ?? [];
+      return this.extractArray(data);
     } catch { return []; }
   }
 
@@ -116,7 +128,7 @@ export class ClaudeMemClient {
       const res = await fetch(`${this.baseUrl}/api/search?${qs}`);
       if (!res.ok) return [];
       const data = await res.json() as any;
-      return data.observations ?? data.results ?? data ?? [];
+      return this.extractArray(data);
     } catch { return []; }
   }
 

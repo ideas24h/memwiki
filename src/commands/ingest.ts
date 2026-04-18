@@ -94,16 +94,19 @@ export async function ingest(opts: {
     })),
   };
 
-  // Prepare observations for LLM
+  // Prepare observations for LLM (use narrative if available, fallback to text)
   const obsData = observations.map(o => ({
     id: o.id,
     type: o.type,
     title: o.title || o.text?.slice(0, 100),
-    text: o.text,
-    concept: o.concept,
-    source_files: o.source_files,
-    created_at: o.created_at,
+    subtitle: o.subtitle,
+    narrative: o.narrative || o.text,
+    facts: o.facts ? JSON.parse(o.facts) : undefined,
+    concepts: o.concepts ? JSON.parse(o.concepts) : undefined,
+    files_read: o.files_read ? JSON.parse(o.files_read) : undefined,
+    files_modified: o.files_modified ? JSON.parse(o.files_modified) : undefined,
     project: o.project,
+    created_at: o.created_at,
   }));
 
   // Call LLM
