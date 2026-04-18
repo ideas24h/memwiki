@@ -4,6 +4,7 @@ import { install } from './commands/install.js';
 import { ingest } from './commands/ingest.js';
 import { showContext } from './commands/context.js';
 import { lint } from './commands/lint.js';
+import { daemon } from './commands/daemon.js';
 
 const program = new Command()
   .name('memwiki')
@@ -56,7 +57,7 @@ program.command('daemon')
   .description('Run background daemon that polls claude-mem')
   .option('--interval <ms>', 'Polling interval', '600000')
   .action(async (opts) => {
-    console.log('Daemon not implemented yet (Phase 3)');
+    await daemon(opts);
   });
 
 program.command('mcp')

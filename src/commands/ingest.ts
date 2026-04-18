@@ -1,9 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import matter from 'gray-matter';
 import { ClaudeMemClient } from '../clients/claude-mem.js';
 import { WikiStore } from '../wiki/store.js';
 import { LLMProvider } from '../llm/provider.js';
 import { commitWiki } from '../git/commit.js';
+import { mergeThreeWay, contentHash } from '../wiki/diff.js';
 
 const INGEST_PROMPT = `You are a wiki editor. Given observations from coding sessions and the current wiki state, output wiki page updates as JSON.
 
@@ -166,7 +168,7 @@ export async function ingest(opts: {
     return;
   }
 
-  // Write pages
+  // Write pages (with 3-way merge for existing pages)
   for (const page of result.pages) {
     const fm = page.frontmatter;
     // Ensure required schema fields
@@ -194,11 +196,39 @@ export async function ingest(opts: {
     if (!fm.sources) fm.sources = observations.map(o => o.id);
     if (!fm.related) fm.related = [];
 
-    store.write({
-      path: page.path,
-      frontmatter: fm,
-      body: page.body,
-    });
+    // 3-way merge for existing pages
+    const theirsContent = matter.stringify(page.body, fm as any);
+    const existingPage = store.read(page.path);
+
+    if (existingPage && page.action === 'update') {
+      const oursContent = matter.stringify(existingPage.body, existingPage.frontmatter as any);
+      const baseHash = state.content_hashes?.[page.path];
+      const baseContent = baseHash ? oursContent : ''; // no base = first time tracking
+      
+      const merged = mergeThreeWay(baseContent, oursContent, theirsContent);
+      
+      if (merged.hadConflict) {
+        fm.authored_by = 'mixed';
+        if (opts.verbose) console.log(`  merge (conflict resolved): ${page.path}`);
+      }
+
+      // Parse merged content back
+      const parsed = matter(merged.content);
+      store.write({
+        path: page.path,
+        frontmatter: { ...fm, ...parsed.data },
+        body: parsed.content,
+      });
+    } else {
+      store.write({
+        path: page.path,
+        frontmatter: fm,
+        body: page.body,
+      });
+    }
+
+    // Track content hash for future merges
+    state.content_hashes[page.path] = contentHash(theirsContent);
 
     if (opts.verbose) console.log(`  ${page.action}: ${page.path}`);
   }
