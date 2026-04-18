@@ -5,30 +5,48 @@ import { WikiStore } from '../wiki/store.js';
 import { LLMProvider } from '../llm/provider.js';
 import { commitWiki } from '../git/commit.js';
 
-const INGEST_PROMPT = `You are a wiki editor for a project knowledge base.
+const INGEST_PROMPT = `You are a wiki editor. Given observations from coding sessions and the current wiki state, output wiki page updates as JSON.
 
-Given observations from coding sessions (from claude-mem) and the current wiki state, produce updates to the wiki.
+PAGE TYPES (path determines type):
+- entities/<slug>.md — repos, services, APIs, tools, people
+- sessions/<slug>.md — session summaries
+- decisions/<slug>.md — ADR-lite decisions
 
-Rules:
-- Create/update entity pages for repos, APIs, services, tools, and people mentioned
-- Create session summaries
-- Use existing aliases when possible
-- Never invent data, URLs, or identifiers
-- Ambiguous references -> create stub with confidence 0.3
-- Output valid JSON only
-
-Output format:
+ENTITY FRONTMATTER (required fields):
 {
-  "pages": [
-    {
-      "path": "entities/slug.md",
-      "frontmatter": { ... },
-      "body": "markdown content",
-      "action": "create" | "update"
-    }
-  ],
-  "new_aliases": { "alias_text": "canonical_slug" },
-  "summary": "Brief description of what was ingested"
+  "type": "entity",
+  "kind": "person|service|repo|api|tool",
+  "title": "Human-readable name",
+  "slug": "kebab-case-slug",
+  "aliases": ["alternative names"],
+  "identifiers": {"github": "...", "url": "..."},
+  "status": "active|archived|unknown",
+  "sources": [1, 2],
+  "confidence": 0.8
+}
+
+SESSION FRONTMATTER:
+{
+  "type": "session",
+  "memory_session_id": "from observation",
+  "files_modified": ["path/to/file"],
+  "sources": [1, 2],
+  "confidence": 0.9
+}
+
+RULES:
+- Never invent data, URLs, emails, or identifiers
+- Ambiguous entity -> stub with confidence 0.3, kind "unknown"
+- Slug: lowercase, hyphens, no special chars
+- Body: markdown with ## headings, use [[entities/slug|Name]] for cross-refs
+- Preserve facts from observations faithfully
+- Group related observations into the same entity
+
+OUTPUT (JSON only, no markdown):
+{
+  "pages": [{"path": "entities/slug.md", "frontmatter": {...}, "body": "md", "action": "create|update"}],
+  "new_aliases": {"alias": "slug"},
+  "summary": "what was processed"
 }`;
 
 export async function ingest(opts: {
@@ -150,18 +168,35 @@ export async function ingest(opts: {
 
   // Write pages
   for (const page of result.pages) {
-    if (!page.frontmatter.id) page.frontmatter.id = crypto.randomUUID();
-    if (!page.frontmatter.created_at) page.frontmatter.created_at = new Date().toISOString();
-    page.frontmatter.updated_at = new Date().toISOString();
-    page.frontmatter.schema_version = 1;
-    if (!page.frontmatter.authored_by) page.frontmatter.authored_by = 'memwiki';
-    if (!page.frontmatter.confidence) page.frontmatter.confidence = 0.7;
-    if (!page.frontmatter.sources) page.frontmatter.sources = observations.map(o => o.id);
-    if (!page.frontmatter.related) page.frontmatter.related = [];
+    const fm = page.frontmatter;
+    // Ensure required schema fields
+    if (!fm.id) fm.id = crypto.randomUUID();
+    if (!fm.type) {
+      // Infer type from path
+      if (page.path.startsWith('entities/')) fm.type = 'entity';
+      else if (page.path.startsWith('sessions/')) fm.type = 'session';
+      else if (page.path.startsWith('decisions/')) fm.type = 'decision';
+      else fm.type = 'entity';
+    }
+    if (!fm.slug) {
+      fm.slug = page.path.replace(/\.md$/, '').split('/').pop() || 'unknown';
+    }
+    if (fm.type === 'entity' && !fm.kind) fm.kind = 'unknown';
+    if (fm.type === 'entity' && !fm.status) fm.status = 'active';
+    if (fm.type === 'entity' && !fm.identifiers) fm.identifiers = {};
+    if (!fm.title) fm.title = fm.slug || page.path;
+    if (!fm.aliases) fm.aliases = [];
+    if (!fm.created_at) fm.created_at = new Date().toISOString();
+    fm.updated_at = new Date().toISOString();
+    fm.schema_version = 1;
+    if (!fm.authored_by) fm.authored_by = 'memwiki';
+    if (!fm.confidence) fm.confidence = 0.7;
+    if (!fm.sources) fm.sources = observations.map(o => o.id);
+    if (!fm.related) fm.related = [];
 
     store.write({
       path: page.path,
-      frontmatter: page.frontmatter,
+      frontmatter: fm,
       body: page.body,
     });
 

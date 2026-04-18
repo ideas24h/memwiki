@@ -8,17 +8,31 @@ export async function commitWiki(message: string, projectRoot: string): Promise<
     return; // Not a git repo, skip silently
   }
 
-  // Stage wiki and .memwiki
+  // Ensure there's a user configured (needed for fresh repos)
   try {
-    execSync('git add wiki/ .memwiki/', { cwd: projectRoot, stdio: 'pipe' });
+    execSync('git config user.name', { cwd: projectRoot, stdio: 'pipe' });
+  } catch {
+    execSync('git config user.name memwiki', { cwd: projectRoot, stdio: 'pipe' });
+    execSync('git config user.email memwiki@local', { cwd: projectRoot, stdio: 'pipe' });
+  }
+
+  // Stage wiki/ (and .memwiki/ if not gitignored)
+  try {
+    execSync('git add wiki/', { cwd: projectRoot, stdio: 'pipe' });
   } catch {
     return;
   }
-
-  // Check if there are changes to commit
+  // .memwiki/ is optional (may be in .gitignore)
   try {
-    const status = execSync('git status --porcelain wiki/ .memwiki/', { cwd: projectRoot, encoding: 'utf-8' });
-    if (!status.trim()) return; // No changes
+    execSync('git add .memwiki/', { cwd: projectRoot, stdio: 'pipe' });
+  } catch {
+    // Ignore — likely gitignored
+  }
+
+  // Check if there are staged changes to commit
+  try {
+    const diff = execSync('git diff --cached --name-only', { cwd: projectRoot, encoding: 'utf-8' });
+    if (!diff.trim()) return; // Nothing staged
   } catch {
     return;
   }
