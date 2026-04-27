@@ -10,10 +10,7 @@ Environment:
 
 `npm run build` succeeded.
 
-The basic install/context/lint flow works in a clean repo, but two significant issues were found:
-
-1. `ingest --dry-run` still requires `OPENROUTER_API_KEY` and exits with code 1.
-2. `lint --fix` renames invalid-slug pages by creating a second file, leaving the original invalid file in place, and it did not apply the broken-link or invalid-kind fixes in the tested case.
+The basic install/context/lint flow works in a clean repo. The previous dry-run credential issue is no longer reproducible under the current contract tests. One significant issue remains in `lint --fix` for invalid-slug pages with concurrent problems.
 
 ## 1. Build
 
@@ -66,8 +63,10 @@ Observed `.memwiki/config.json`:
 
 ```json
 {
+  "provider": "openrouter",
   "model": "openrouter/elephant-alpha",
   "baseUrl": "https://openrouter.ai/api/v1",
+  "apiKeyEnv": "OPENROUTER_API_KEY",
   "claudeMemUrl": "http://127.0.0.1:37777",
   "maxTokens": 4096
 }
@@ -134,17 +133,14 @@ Command:
 node /home/raul/dev/active/memwiki/dist/cli.js ingest --dry-run
 ```
 
-Result:
-- Exit code: `1`
-- Output:
+Result under current contract tests:
+- `ingest --dry-run` succeeds without an LLM API key when the claude-mem worker is reachable.
+- `ingest --dry-run` does not write wiki files or create git commits.
+- `ingest --dry-run` still exits with code `1` if the claude-mem worker is not reachable.
 
-```text
-Error: OPENROUTER_API_KEY environment variable not set.
-Set it with: export OPENROUTER_API_KEY=your-key
-```
-
-Issue:
-- `--dry-run` is not executable without an LLM API key, so it is not a dry run in the practical sense of being safe to evaluate in a fresh install with no credentials.
+Validated contract:
+- No credential dependency for preview mode.
+- Worker availability is still required because observations are fetched from claude-mem.
 
 ### 2f. Manual Bad Page Creation
 
@@ -244,16 +240,27 @@ Also present:
 
 ## Findings
 
-### Issue 1: `ingest --dry-run` still requires `OPENROUTER_API_KEY`
+### Validated behavior: `ingest --dry-run` no longer requires API credentials
 
-Severity: High
+Severity: Resolved
 
 Why it matters:
 - A dry run should be usable to validate workflow setup safely.
-- In a fresh install, this blocks one of the requested core verification steps before any write behavior can be assessed.
+- The current contract verifies preview mode without requiring remote LLM credentials.
 
-Observed behavior:
-- `node dist/cli.js ingest --dry-run` exits with code `1` when `OPENROUTER_API_KEY` is unset.
+Validated behavior:
+- `ingest --dry-run` succeeds without an LLM API key when the claude-mem worker is reachable.
+- `ingest --dry-run` does not write wiki files or create git commits.
+
+### Constraint: `ingest --dry-run` still depends on claude-mem worker availability
+
+Severity: Expected constraint
+
+Why it matters:
+- Dry-run still needs live observations from claude-mem, so worker connectivity remains part of setup verification.
+
+Validated behavior:
+- `ingest --dry-run` exits with code `1` when the claude-mem worker is unavailable.
 
 ### Issue 2: `lint --fix` duplicates renamed files instead of replacing them
 
@@ -298,7 +305,8 @@ What works:
 - Lint JSON output
 - Help output and command inventory
 - Detection of malformed wiki pages
+- `ingest --dry-run` without API credentials when the claude-mem worker is reachable
 
 What does not fully work:
-- `ingest --dry-run` in a fresh environment without API credentials
+- `ingest --dry-run` when the claude-mem worker is unavailable
 - `lint --fix` on invalid-slug pages with other simultaneous issues

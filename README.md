@@ -170,6 +170,10 @@ memwiki install
 export OPENROUTER_API_KEY=***     # or LLM_API_KEY, OPENAI_API_KEY, MEMWIKI_API_KEY
 memwiki ingest --verbose
 
+# Preview the ingest workflow without writing or committing
+# (requires a reachable claude-mem worker, but no LLM API key)
+memwiki ingest --dry-run
+
 # 4. View wiki context for your next session
 memwiki context
 
@@ -229,6 +233,8 @@ Features:
 - Writes structured markdown pages with validated frontmatter
 - Performs 3-way merge to preserve human edits
 - Auto-commits changes to git
+- `--dry-run` previews canonization without writing wiki files or creating git commits
+- `--dry-run` still requires the claude-mem worker at `claudeMemUrl` to be reachable
 
 ### `memwiki context`
 
@@ -289,6 +295,8 @@ Run as MCP stdio server. Not yet implemented.
 ## Configuration
 
 Configuration is stored in `.memwiki/config.json`:
+
+`memwiki install` seeds this file from the centralized defaults in `src/config/defaults.ts`. At runtime, missing fields are merged with those defaults before ingest runs.
 
 ```json
 {
@@ -393,7 +401,10 @@ npm run build       # Compile TypeScript
 npm run dev         # Watch mode
 npm run lint        # Type-check only
 npm test            # Run tests
+node --test dist/tests/install.contract.test.js dist/tests/provider.contract.test.js dist/tests/ingest-dry-run.contract.test.js
 ```
+
+Contract coverage includes install defaults, provider defaults/API key resolution, and ingest dry-run behavior.
 
 ## Upstream dependencies
 

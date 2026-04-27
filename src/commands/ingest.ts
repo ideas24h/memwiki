@@ -4,6 +4,7 @@ import matter from 'gray-matter';
 import { ClaudeMemClient } from '../clients/claude-mem.js';
 import { WikiStore } from '../wiki/store.js';
 import { LLMProvider, resolveApiKey } from '../llm/provider.js';
+import { DEFAULT_MEMWIKI_CONFIG } from '../config/defaults.js';
 import { readFileSync } from 'fs';
 import { commitWiki } from '../git/commit.js';
 import { mergeThreeWay, contentHash } from '../wiki/diff.js';
@@ -99,7 +100,8 @@ export async function ingest(opts: {
   }
 
   // Load config and state
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  const rawConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  const config = { ...DEFAULT_MEMWIKI_CONFIG, ...rawConfig };
   const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
   const sinceEpoch = opts.since ? parseInt(opts.since) : state.last_ingested_epoch;
 
@@ -185,7 +187,7 @@ export async function ingest(opts: {
     process.exit(1);
   }
 
-  const providerName = config.provider || 'openrouter';
+  const providerName = config.provider;
   const llm = new LLMProvider({
     apiKey,
     model: config.model,

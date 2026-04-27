@@ -5,6 +5,24 @@ All notable changes to memwiki are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Contract tests for install defaults, provider defaults/API key resolution, and ingest dry-run behavior
+
+### Changed
+
+- Centralized LLM and memwiki defaults in `src/config/defaults.ts`
+- `memwiki install` now seeds `.memwiki/config.json` from `DEFAULT_MEMWIKI_CONFIG`
+- `ingest` now merges user config with `DEFAULT_MEMWIKI_CONFIG` instead of relying on inline fallbacks
+- `LLMProvider` now uses `DEFAULT_LLM_CONFIG` for provider/model/baseUrl/maxTokens defaults
+
+### Clarified
+
+- `ingest --dry-run` does not require an LLM API key when the claude-mem worker is reachable
+- `ingest --dry-run` still fails when the claude-mem worker is unavailable
+
 ## [0.1.0] - 2026-04-18
 
 ### Phase 3: 3-way merge + daemon

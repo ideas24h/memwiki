@@ -1,3 +1,5 @@
+import { DEFAULT_LLM_CONFIG } from '../config/defaults.js';
+
 export type LLMProviderName = 'openrouter' | 'openai' | 'ollama' | 'custom';
 
 export interface LLMConfig {
@@ -19,10 +21,10 @@ export interface LLMResponse {
 }
 
 const DEFAULT_CONFIG: Partial<LLMConfig> = {
-  baseUrl: 'https://openrouter.ai/api/v1',
-  model: 'openrouter/elephant-alpha',
-  maxTokens: 4096,
-  provider: 'openrouter',
+  provider: DEFAULT_LLM_CONFIG.provider,
+  model: DEFAULT_LLM_CONFIG.model,
+  baseUrl: DEFAULT_LLM_CONFIG.baseUrl,
+  maxTokens: DEFAULT_LLM_CONFIG.maxTokens,
 };
 
 export class LLMProvider {

@@ -8,7 +8,8 @@ Thanks for your interest in contributing! Here's how to get started.
 - npm
 - git
 - A running [claude-mem](https://github.com/thedotmack/claude-mem) instance (for testing ingest)
-- An OpenRouter API key (for testing LLM canonization)
+- An LLM API key only if you are testing a real remote provider-backed ingest path (default: `OPENROUTER_API_KEY`; configurable via `apiKeyEnv`)
+- No LLM API key is required to exercise the `ingest --dry-run` contract when the claude-mem worker is reachable
 
 ## Setup
 
@@ -36,8 +37,9 @@ src/
   cli.ts                  -- CLI entry point
   clients/claude-mem.ts   -- claude-mem HTTP client
   commands/               -- CLI command implementations
+  config/defaults.ts      -- Centralized default LLM and memwiki configuration
   git/commit.ts           -- Git auto-commit
-  llm/provider.ts         -- LLM provider (OpenRouter-compatible)
+  llm/provider.ts         -- OpenAI-compatible multi-provider LLM client and API key resolution
   wiki/                   -- Core wiki engine (store, schema, diff, slug)
 ```
 
@@ -81,7 +83,8 @@ Open a [GitHub issue](https://github.com/ideas24h/memwiki/issues) with:
 - Keep PRs focused on a single change
 - Include a clear description of what and why
 - Ensure `npm run build` and `npm run lint` pass
-- New features should include tests in `src/test/`
+- New features should include tests in `src/tests/`
+- Changes to install/config/provider/ingest behavior should update or extend the matching contract tests
 
 ## License
 
