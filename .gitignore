@@ -4,3 +4,4 @@ dist/
 *.d.ts.map
 .memwiki/
 wiki/
+.hermes/
